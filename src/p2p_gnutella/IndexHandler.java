@@ -54,6 +54,7 @@ public class IndexHandler implements Runnable {
 					// if yes, will not forward this message anymore
 					if (Client.checkMessageArray(tempM)) {
 						tempM.currentTTL = 0;
+						break;
 					}
 					// if no, store the message in the MessageArray
 					if (!Client.checkMessageArray(tempM)) {
@@ -88,16 +89,16 @@ public class IndexHandler implements Runnable {
 					// 1. find if the current peer has the target file.
 					String searchFile = tempM.FileName;
 					boolean searchResult = false;
+					
 					if (Client.sharedFiles.containsKey(searchFile))
 						searchResult = true;
-					
-					if (Client.downloadFiles.containsKey(searchFile))
+					else if (Client.downloadFiles.containsKey(searchFile)
+							&& Client.downloadFiles.get(searchFile).conState.equals("Valid"))
 						searchResult = true;
 
-					if (searchResult){
-						// System.out.println("I have " + searchFile);
-						tempM.currentTTL = 0;
-					}
+					//if (searchResult){
+					//	// System.out.println("I have " + searchFile);
+					//}
 
 					int connectionIndex = 0;
 					// 2. find the upstream connection
@@ -195,6 +196,70 @@ public class IndexHandler implements Runnable {
 						dos.writeUTF(sendBuffer);
 						dos.flush();
 					}					
+					break;
+					
+				case 4:
+					InvalidateMessage tempInvM = gson.fromJson(dis.readUTF(), 
+							InvalidateMessage.class);
+					tempInvM.TTLdecrease();
+					//tempInvM.printInvalidateMessage();
+					//System.out.println(tempInvM.messageID.sequenceNumber);
+					PeerInfo tempP = new PeerInfo();
+					tempP = gson.fromJson(dis.readUTF(), tempP.getClass());
+					// p.printPeer();
+					
+					// check the MessageArray
+					// if yes, will not forward this message anymore
+					if (Client.checkInvalidMsgArray(tempInvM)) {
+						tempInvM.TTL = 0;
+						break;
+					}
+					// if no, store the message in the MessageArray
+					if (!Client.checkInvalidMsgArray(tempInvM)) {
+						Client.invalidMsgArray[Client.invalidMsgNumber] = tempInvM;
+						Client.invalidUpsArray[Client.invalidMsgNumber] = tempP;
+						Client.invalidMsgNumber ++;
+					}
+					Gson g1 = new Gson();
+					// forward message to all it's neighbors
+					if (tempInvM.TTL != 0) {
+						for (int i = 0; i < Client.neighborsCount; i++) {
+							// not send to its upstream
+							if (tempP.peerName.equals(Client.neighbors[i].peerName) == false) 
+							{
+								DataOutputStream dos = new DataOutputStream(
+										Client.socket[i].getOutputStream());
+								dos.writeUTF("4");
+								dos.flush();
+								// send message
+								String sendBuffer1 = g1.toJson(tempInvM);
+								dos.writeUTF(sendBuffer1);
+								dos.flush();
+								// send upstream information
+								sendBuffer1 = g1.toJson(Client.self);
+								dos.writeUTF(sendBuffer1);
+								dos.flush();
+							}
+						}
+					}
+					
+					// find if the current peer has the target file in Downloaded file folder
+					// and check the Version Number
+					String tempFile = tempInvM.fileInfo.fileName;
+					FileInfo fInfo = new FileInfo();
+					fInfo = Client.downloadFiles.get(tempFile);
+					if (!Client.downloadFiles.containsKey(tempFile)) {
+						System.out.println("I don't Have this File!");
+						break;
+						}
+					if (Client.downloadFiles.containsKey(tempFile)
+							&& fInfo.versionNum != tempInvM.fileInfo.versionNum) {
+						Client.downloadFiles.get(tempFile).conState = "Invalid";
+						System.out.println("Consistency State for " + tempFile +
+								" is: " + Client.downloadFiles.get(tempFile).conState);
+					} else if (fInfo.versionNum == tempInvM.fileInfo.versionNum)
+						System.out.println("Consistency State for " + tempFile +
+								" is: " + Client.downloadFiles.get(tempFile).conState);
 					break;
 				}}
 			} while (true);

@@ -23,6 +23,5 @@ public class InvalidateMessage {
 
 	public void TTLdecrease() {
 		TTL += -1;
-	}
-	
+	}	
 }

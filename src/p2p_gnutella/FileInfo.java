@@ -1,5 +1,11 @@
 package p2p_gnutella;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.net.Socket;
+import java.net.UnknownHostException;
+
 public class FileInfo {
 	public String fileName;
 	public int versionNum;
@@ -35,6 +41,44 @@ public class FileInfo {
 		System.out.println("File: " + fileName + " from: "
 				+ originalServer.peerName + " version: " + versionNum + " state: "
 				+ conState + " TTR: " + TTR);
+	}
+	
+	@SuppressWarnings("resource")
+	public synchronized void pull() {
+		//System.out.println(peerName);
+		//System.out.println(fileName);
+		
+		for (int j = 0; j < 10; j++) {
+			try {
+				if (Client.peerList[j].peerName.equals(originalServer.peerName)){
+					Socket p2pSocket = new Socket(Client.peerList[j].peerIP, 
+							Integer.parseInt(Client.peerList[j].peerPort) + 20);
+					DataInputStream p2pIn = new DataInputStream(
+							p2pSocket.getInputStream());
+					DataOutputStream p2pOut = new DataOutputStream(
+							p2pSocket.getOutputStream());
+					
+					p2pOut.writeUTF(fileName);
+					p2pOut.flush();					
+					int originVersion = p2pIn.readInt();
+					
+					if (originVersion != versionNum) {
+						System.out.println(fileName + " is out of date");
+						Client.downloadFiles.get(fileName).conState = "Invalid"; 
+					} else {
+						System.out.println(fileName + " is newest");
+						Client.downloadFiles.get(fileName).conState = "Valid";
+						Client.downloadFiles.get(fileName).TTR = Client.TTR;
+					}										
+				}
+			} catch (NumberFormatException e) {
+				e.printStackTrace();
+			} catch (UnknownHostException e) {
+				e.printStackTrace();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
 	}
 
 }

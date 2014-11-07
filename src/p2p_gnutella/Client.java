@@ -48,13 +48,19 @@ public class Client {
 	public static int messageNumber;
 	private static Object lock = new Object(); 
 	private static Object lock1 = new Object();
+	private static Object lock2 = new Object();
 	
+	public static ServerSocket pullSSocket;
 	public static int pushFlag;
 	public static int pushTTL;
 	public static int pullFlag;
 	public static int TTR;
 	public static HashMap<String, FileInfo> sharedFiles;
 	public static HashMap<String, FileInfo> downloadFiles;
+	public static InvalidateMessage[] invalidMsgArray;
+	public static PeerInfo[] invalidUpsArray;
+	public static int invalidMsgNumber;
+	public static Timer timer;
 
 	public Client() {
 		initializeClient();
@@ -113,7 +119,7 @@ public class Client {
 			//String inputString = input.nextLine();
 
 			// set this peer's id, from p1 to p10
-			String inputString = "p4";
+			String inputString = "p1";
 			File file = new File(inputPath);
 			reader = new BufferedReader(new FileReader(file));
 
@@ -217,11 +223,14 @@ public class Client {
 
 		messageArray = new Message[500];
 		upstreamArray = new PeerInfo[500];
+		invalidMsgArray = new InvalidateMessage[500];
+		invalidUpsArray = new PeerInfo[500];
 		messageNumber = 0;
+		invalidMsgNumber = 0;
 		gson = new Gson();
 		sharedFiles = new HashMap<String, FileInfo>();
 		downloadFiles = new HashMap<String, FileInfo>();
-		
+				
 		File dir = new File("");
 		String currentPath = dir.getAbsolutePath();	
 		String configPath = currentPath + "/config.txt";
@@ -245,6 +254,8 @@ public class Client {
 		
 		new Thread(new SetupListener()).start();
 		new Thread(new SendListener()).start();
+		new Thread(new PullListener()).start();
+		
 		Client.socket = new Socket[Client.neighborsCount];
 	}
 
@@ -301,6 +312,8 @@ public class Client {
 	            super.onFileChange(file);
 	            log.info("File Changed: " +file.getAbsolutePath());
 	            sharedFiles.get(file.getName()).versionIncrease();
+	            if (pushFlag == 1)
+	            	pushInvalidMsg(sharedFiles.get(file.getName()));
 	    		System.out.print("Shared Files: ");
 	    		System.out.println(sharedFiles.keySet());
 	        }
@@ -346,7 +359,8 @@ public class Client {
 	        public void onFileChange(File file) {
 	            super.onFileChange(file);
 	            // log.info("File Changed: " +file.getAbsolutePath());
-	            System.out.println("You are not ALLOWED to change downloaded file!!!");
+	    		System.out.print("Downloaded Files: ");
+	    		System.out.println(downloadFiles.keySet());
 	        }
 
 	        @Override
@@ -374,6 +388,61 @@ public class Client {
 	    }
 	}	
 	
+	public void query(MessageID mID, int TTL, String searchFileName) {
+		synchronized (lock){
+		Message m = new Message(mID, TTL, searchFileName);
+		try {
+			for (int i = 0; i < Client.neighborsCount; i++) {
+				DataOutputStream dos = new DataOutputStream(
+						Client.socket[i].getOutputStream());
+				dos.writeUTF("2");
+				dos.flush();
+				// send message
+				Gson gson = new Gson();
+				String sendBuffer = gson.toJson(m);
+				dos.writeUTF(sendBuffer);
+				dos.flush();
+				// send upstream information
+				sendBuffer = gson.toJson(Client.self);
+				dos.writeUTF(sendBuffer);
+				dos.flush();
+			}
+		} catch (UnknownHostException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}}
+
+	public static void pushInvalidMsg(FileInfo fInfo) {
+		synchronized (lock2){
+			InvalidateMessage invalidM = new InvalidateMessage(
+					new MessageID(Client.self), fInfo, pushTTL);
+			invalidM.printInvalidateMessage();
+			
+			try {
+				for (int i = 0; i < Client.neighborsCount; i++) {
+					DataOutputStream dos = new DataOutputStream(
+							Client.socket[i].getOutputStream());					
+				dos.writeUTF("4");
+				dos.flush();
+				Gson gson = new Gson();
+				String sendBuffer = gson.toJson(invalidM);
+				dos.writeUTF(sendBuffer);
+				dos.flush();
+				// send upstream information
+				sendBuffer = gson.toJson(Client.self);
+				dos.writeUTF(sendBuffer);
+				dos.flush();
+			}
+		} catch (UnknownHostException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	}
+	
 	public static void disconnect(Socket[] socket) {
 		for (int i = 0; i < neighborsCount; i++) {
 			try {
@@ -394,14 +463,66 @@ public class Client {
 		}
 		return false;
 	}
+	
+	// check if the client already has this invalid message
+	public static boolean checkInvalidMsgArray(InvalidateMessage m) {
+		for (int i = 0; i < Client.invalidMsgNumber; i++) {
+			if (Client.invalidMsgArray[i].messageID.isEqual(m.messageID))
+				return true;
+		}
+		return false;
+	}
 
+	@SuppressWarnings({ "rawtypes", "resource" })
+	public synchronized static void pull() throws NumberFormatException, UnknownHostException, IOException {
+		for (Map.Entry me : downloadFiles.entrySet()) {
+			FileInfo fInfo = new FileInfo();
+			fInfo = (FileInfo) me.getValue();
+			String pn = fInfo.originalServer.peerName;
+			//System.out.println(pn);
+			
+			for (int j = 0; j < 10; j++) {
+				if (Client.peerList[j].peerName.equals(pn)){
+					Socket p2pSocket = new Socket(Client.peerList[j].peerIP, 
+							Integer.parseInt(Client.peerList[j].peerPort) + 20);
+					DataInputStream p2pIn = new DataInputStream(
+							p2pSocket.getInputStream());
+					DataOutputStream p2pOut = new DataOutputStream(
+							p2pSocket.getOutputStream());
+					
+					p2pOut.writeUTF(fInfo.fileName);
+					p2pOut.flush();					
+					int originVersion = p2pIn.readInt();
+					
+					if (originVersion != fInfo.versionNum) {
+						System.out.println(fInfo.fileName + 
+								" is out of date");
+						Client.downloadFiles.get(fInfo.fileName).conState = "Invalid"; 
+					} else {
+						System.out.println(fInfo.fileName + 
+								" is newest");
+						Client.downloadFiles.get(fInfo.fileName).conState = "Valid";
+						Client.downloadFiles.get(fInfo.fileName).TTR = Client.TTR;
+					}										
+				}
+			}
+		}
+	}
+	
+	public static void fileDelete(String fileName) {
+		String savePath = Client.self.peerPath + "/" + "Downloads" 
+				+ "/" + fileName;
+		File file = new File(savePath);
+		if(file.isFile() && file.exists()){
+			file.delete();
+			System.out.println(fileName + " is Deleted!");
+		} else {
+			System.out.println("No Such File");
+		}		
+	}
+	
 	@SuppressWarnings("resource")
-	public void obtain(String fn) throws IllegalArgumentException, IOException, Exception {
-		System.out
-				.println("Please Input the peer name you "
-						+ "want to download from :");
-		Scanner input = new Scanner(System.in);
-		String pn = input.nextLine();
+	public synchronized void obtain(String fn, String pn) throws IllegalArgumentException, IOException, Exception {
 		gson = new Gson();
 		FileInfo finfo = new FileInfo();
 		
@@ -410,7 +531,7 @@ public class Client {
 			if (Client.peerList[j].peerName.equals(pn)){
 				// Download
 				Socket p2pSocket = new Socket(Client.peerList[j].peerIP, 
-						Integer.parseInt(Client.peerList[j].peerPort) + 1);
+						Integer.parseInt(Client.peerList[j].peerPort) + 10);
 				DataInputStream p2pIn = new DataInputStream(
 						p2pSocket.getInputStream());
 				DataOutputStream p2pOut = new DataOutputStream(
@@ -421,6 +542,11 @@ public class Client {
 				String infoBuffer = p2pIn.readUTF();
 				finfo = gson.fromJson(infoBuffer, finfo.getClass());
 				downloadFiles.put(fn, finfo);
+				if (pullFlag == 1) {
+					timer = new Timer();
+					timer.schedule(new AutoPull(fn, timer), 5000, 
+							downloadFiles.get(fn).TTR*1000);
+				}
 				
 				// the Download process may not work when file size is larger 
 				// than the buffersize
@@ -463,39 +589,11 @@ public class Client {
 				//System.out.println("Save as: " + savePath);
 				fileOut.close();
 				break;
-			}else {
-				System.out.println("Invalid Peer Name!!!");
 			}
 		}
 	}
 
-	public void query(MessageID mID, int TTL, String searchFileName) {
-		synchronized (lock){
-		Message m = new Message(mID, TTL, searchFileName);
-		try {
-			for (int i = 0; i < Client.neighborsCount; i++) {
-				DataOutputStream dos = new DataOutputStream(
-						Client.socket[i].getOutputStream());
-				dos.writeUTF("2");
-				dos.flush();
-				// send message
-				Gson gson = new Gson();
-				String sendBuffer = gson.toJson(m);
-				dos.writeUTF(sendBuffer);
-				dos.flush();
-				// send upstream information
-				sendBuffer = gson.toJson(Client.self);
-				dos.writeUTF(sendBuffer);
-				dos.flush();
-			}
-		} catch (UnknownHostException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-	}}
-
-	@SuppressWarnings({ "resource", "static-access" })
+	@SuppressWarnings({ "resource", "static-access", "rawtypes" })
 	public static void main(String[] args) throws RuntimeException, Exception {
 		Client client = new Client();
 
@@ -507,7 +605,8 @@ public class Client {
 			System.out.println("Please input an Index Number: ");
 			System.out.println("1: Connect \n2: Query \n"
 					+ "3: Download \n4: Query Test\n5: Show Files\n"
-					+ "6: Quit");
+					+ "6: Push Invalidation\n7: Refresh\n"
+					+ "8: Quit");
 			input = new Scanner(System.in);
 			commandIndex = input.nextInt();
 			switch (commandIndex) {
@@ -526,14 +625,14 @@ public class Client {
 				System.out.println("Please input the TTL: ");
 				int ttl = inputS.nextInt();
 				
-				Client.hitCount = 0;
+				client.hitCount = 0;
 				MessageID mID = new MessageID(client.self);
 				client.query(mID, ttl, searchFileName);
 				
 				// when messageArray get to max
 				// start from 0, as a flush action
-				if (Client.messageNumber == 499){
-					Client.messageNumber = 0;
+				if (client.messageNumber == 499){
+					client.messageNumber = 0;
 				}
 					
 				break;
@@ -543,10 +642,13 @@ public class Client {
 				System.out
 						.println("Please input the exact file name "
 								+ "you want to download :");
-				String fn = obtainFile.nextLine();
+				String fn = obtainFile.nextLine();				
+				System.out
+				.println("Please Input the peer name you "
+						+ "want to download from :");
+				String pn = obtainFile.nextLine();
 
-				client.obtain(fn);
-
+				client.obtain(fn, pn);
 				break;
 				
 			case 4:
@@ -577,15 +679,47 @@ public class Client {
 					thread.sleep(1000);
 					}
 				}
+				break;
 				
 			case 5:
 	    		System.out.print("Shared Files: ");
 	    		System.out.println(sharedFiles.keySet());
-	    		System.out.print("Downloaded Files: ");
-	    		System.out.println(downloadFiles.keySet());
+	    		System.out.println("Downloaded Files: ");
+	    		for (Map.Entry me : downloadFiles.entrySet()) {
+	    			FileInfo fInfo = new FileInfo();
+	    			fInfo = (FileInfo) me.getValue();
+					System.out.println(fInfo.fileName + " is " + fInfo.conState);
+	    		}
+	    		break;
 	    		
+			case 6:
+				Scanner push = new Scanner(System.in);
+				System.out
+						.println("Please input the exact file "
+								+ "name you want to push: ");
+				String pushName = push.nextLine();
+				pushInvalidMsg(sharedFiles.get(pushName));
+				break;
+				
+			case 7:
+				// print the current downloaded files' consistency states
+				// then choose desired one to refresh
+				pull();
+				Scanner refresh = new Scanner(System.in);
+				System.out
+						.println("Please input the exact file "
+								+ "name you want to refresh: ");
+				String refreshName = refresh.nextLine();
+				String refreshPeer;
+				refreshPeer = 
+						client.downloadFiles.get(refreshName).originalServer.peerName;
+				fileDelete(refreshName);
+				client.obtain(refreshName, refreshPeer);				
+				break;							
 			}
-		} while (commandIndex != 6);
+		} while (commandIndex != 8);
 		disconnect(socket);
+		if (pullFlag == 1)
+			timer.cancel();
 	}
 }

@@ -32,7 +32,7 @@ public class SendListener implements Runnable {
 	public synchronized void run() {
 		try {
 			//System.out.println(Integer.parseInt(Client.self.peerPort) + 1);
-			Client.downloadSSocket = new ServerSocket(Integer.parseInt(Client.self.peerPort) + 1);
+			Client.downloadSSocket = new ServerSocket(Integer.parseInt(Client.self.peerPort) + 10);
 			while(true){
 				
 				socket = Client.downloadSSocket.accept();
