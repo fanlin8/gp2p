@@ -26,7 +26,7 @@ public class SetupListener implements Runnable{
 	public void run() {
 		try {
 			String senderName;
-			System.out.println(Integer.parseInt(Client.self.peerPort));
+			//System.out.println(Integer.parseInt(Client.self.peerPort));
 			Client.setupSSocket = new ServerSocket(Integer.parseInt(Client.self.peerPort));
 			
 			while(true){

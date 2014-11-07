@@ -88,15 +88,11 @@ public class IndexHandler implements Runnable {
 					// 1. find if the current peer has the target file.
 					String searchFile = tempM.FileName;
 					boolean searchResult = false;
-					for (int i = 0; i < Client.sharedFileList.length; i++) {
-						if (Client.sharedFileList[i].equals(searchFile))
-							searchResult = true;
-					}
-					for (int i = 0; i < Client.downloadFileList.length; i++) {
-						if (Client.downloadFileList[i].equals(searchFile))
-							searchResult = true;
-					}
+					if (Client.sharedFiles.containsKey(searchFile))
+						searchResult = true;
 					
+					if (Client.downloadFiles.containsKey(searchFile))
+						searchResult = true;
 
 					if (searchResult){
 						// System.out.println("I have " + searchFile);

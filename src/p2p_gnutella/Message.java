@@ -14,6 +14,9 @@ public class Message {
 	public int currentTTL;
 	public int maxTTL;
 	public String FileName;
+	
+	public Message() {
+	}
 
 	public Message(MessageID mID, int ttl, String fn) {
 		messageID = mID;
@@ -29,9 +32,6 @@ public class Message {
 				+ "-" + messageID.sequenceNumber);
 		System.out.println("TTL : " + currentTTL);
 		System.out.println("Search File : " + FileName);
-	}
-
-	public Message() {
 	}
 
 	public void TTLdecrease() {

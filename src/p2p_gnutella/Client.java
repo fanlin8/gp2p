@@ -37,7 +37,6 @@ public class Client {
 	public static int hitCount;
 	public static long startTime = 0;
 	public static String[] sharedFileList;
-	public static String[] downloadFileList;
 	public DataOutputStream dos;
 	public DataInputStream dis;
 	public static ServerSocket setupSSocket;
@@ -54,6 +53,8 @@ public class Client {
 	public static int pushTTL;
 	public static int pullFlag;
 	public static int TTR;
+	public static HashMap<String, FileInfo> sharedFiles;
+	public static HashMap<String, FileInfo> downloadFiles;
 
 	public Client() {
 		initializeClient();
@@ -112,7 +113,7 @@ public class Client {
 			//String inputString = input.nextLine();
 
 			// set this peer's id, from p1 to p10
-			String inputString = "p1";
+			String inputString = "p4";
 			File file = new File(inputPath);
 			reader = new BufferedReader(new FileReader(file));
 
@@ -153,6 +154,7 @@ public class Client {
 		}
 	}
 	
+	// get pull and push setting from the consistency configure file
 	public static void readConsistencyConfig(String inputPath) {
 		BufferedReader reader = null;
 		try {
@@ -180,9 +182,10 @@ public class Client {
 		} finally {
 			if (reader != null) {
 				try {
-					System.out.println("PushFlag: " + pushFlag);
-					System.out.println("PullFlag: " + pullFlag);
-					System.out.println("TTR: " + TTR);
+					//System.out.println("PushFlag: " + pushFlag);
+					//System.out.println("PushTTL: " + TTR);
+					//System.out.println("PullFlag: " + pullFlag);
+					//System.out.println("TTR: " + TTR);
 					reader.close();
 				} catch (IOException e) {
 					e.printStackTrace();
@@ -202,29 +205,12 @@ public class Client {
 		sharedFileList = new String[file.list().length];
 		sharedFileList = file.list();
 
-		System.out.print("Shared Files: ");
 		for (int i = 0; i < sharedFileList.length; i++){
-			System.out.print(sharedFileList[i] + "; ");
+			sharedFiles.put(sharedFileList[i], new FileInfo(
+					sharedFileList[i], Client.self, Client.TTR));
 		}
-		System.out.println("");
-	}	
-	
-	// get each peer's sharing file list.
-	public void getDownloadList(String inputPath) {
-
-		File file = new File(inputPath);
-		if (!file.exists()) {
-			file.mkdirs();
-		}
-
-		downloadFileList = new String[file.list().length];
-		downloadFileList = file.list();
-
-		System.out.print("Downloaded Files: ");
-		for (int i = 0; i < downloadFileList.length; i++){
-			System.out.print(downloadFileList[i] + "; ");
-		}
-		System.out.println("");
+		System.out.print("Shared Files: ");
+		System.out.println(sharedFiles.keySet());
 	}	
 	
 	public void initializeClient() {
@@ -233,6 +219,8 @@ public class Client {
 		upstreamArray = new PeerInfo[500];
 		messageNumber = 0;
 		gson = new Gson();
+		sharedFiles = new HashMap<String, FileInfo>();
+		downloadFiles = new HashMap<String, FileInfo>();
 		
 		File dir = new File("");
 		String currentPath = dir.getAbsolutePath();	
@@ -250,10 +238,9 @@ public class Client {
 		getSharedList(peerSharedPath);
 		shareFileListener(peerSharedPath);
 		
-		// for downloaded copied
+		// for downloaded copies
 		String peerDownloadPath = currentPath + "/" + self.peerName
 				+ "/" + "Downloads";	
-		getDownloadList(peerDownloadPath);
 		downloadFileListener(peerDownloadPath);
 		
 		new Thread(new SetupListener()).start();
@@ -313,21 +300,28 @@ public class Client {
 	        public void onFileChange(File file) {
 	            super.onFileChange(file);
 	            log.info("File Changed: " +file.getAbsolutePath());
-	            getSharedList(filePath);
+	            sharedFiles.get(file.getName()).versionIncrease();
+	    		System.out.print("Shared Files: ");
+	    		System.out.println(sharedFiles.keySet());
 	        }
 
 	        @Override
 	        public void onFileCreate(File file) {
 	            super.onFileCreate(file);
 	            log.info("File Created: "+file.getAbsolutePath());
-	            getSharedList(filePath);
+	            sharedFiles.put(file.getName(), new FileInfo(
+	            		file.getName(), Client.self, Client.TTR));
+	    		System.out.print("Shared Files: ");
+	    		System.out.println(sharedFiles.keySet());
 	        }
 
 	        @Override
 	        public void onFileDelete(File file) {
 	            super.onFileDelete(file);
 	            log.info("File Deleted: " +file.getAbsolutePath());
-	            getSharedList(filePath);
+	            sharedFiles.remove(file.getName());
+	    		System.out.print("Shared Files: ");
+	    		System.out.println(sharedFiles.keySet());
 	        }
 	        });	        
 	        long interval = 1000;
@@ -352,21 +346,24 @@ public class Client {
 	        public void onFileChange(File file) {
 	            super.onFileChange(file);
 	            // log.info("File Changed: " +file.getAbsolutePath());
-	            getDownloadList(filePath);
+	            System.out.println("You are not ALLOWED to change downloaded file!!!");
 	        }
 
 	        @Override
 	        public void onFileCreate(File file) {
 	            super.onFileCreate(file);
 	            // log.info("File Created: "+file.getAbsolutePath());
-	            getDownloadList(filePath);
+	    		System.out.print("Downloaded Files: ");
+	    		System.out.println(downloadFiles.keySet());
 	        }
 
 	        @Override
 	        public void onFileDelete(File file) {
 	            super.onFileDelete(file);
 	            // log.info("File Deleted: " +file.getAbsolutePath());
-	            getDownloadList(filePath);
+	            downloadFiles.remove(file.getName());
+	    		System.out.print("Downloaded Files: ");
+	    		System.out.println(downloadFiles.keySet());
 	        }
 	        });	        
 	        long interval = 1000;
@@ -405,6 +402,8 @@ public class Client {
 						+ "want to download from :");
 		Scanner input = new Scanner(System.in);
 		String pn = input.nextLine();
+		gson = new Gson();
+		FileInfo finfo = new FileInfo();
 		
 		// check peer list to get destination's information
 		for (int j = 0; j < 10; j++) {
@@ -418,6 +417,10 @@ public class Client {
 						p2pSocket.getOutputStream());
 				p2pOut.writeUTF(fn);
 				p2pOut.flush();
+				
+				String infoBuffer = p2pIn.readUTF();
+				finfo = gson.fromJson(infoBuffer, finfo.getClass());
+				downloadFiles.put(fn, finfo);
 				
 				// the Download process may not work when file size is larger 
 				// than the buffersize
@@ -460,6 +463,8 @@ public class Client {
 				//System.out.println("Save as: " + savePath);
 				fileOut.close();
 				break;
+			}else {
+				System.out.println("Invalid Peer Name!!!");
 			}
 		}
 	}
@@ -501,7 +506,8 @@ public class Client {
 			// simple user interface
 			System.out.println("Please input an Index Number: ");
 			System.out.println("1: Connect \n2: Query \n"
-					+ "3: Download \n4: Quit\n5: Query Test");
+					+ "3: Download \n4: Query Test\n5: Show Files\n"
+					+ "6: Quit");
 			input = new Scanner(System.in);
 			commandIndex = input.nextInt();
 			switch (commandIndex) {
@@ -526,7 +532,7 @@ public class Client {
 				
 				// when messageArray get to max
 				// start from 0, as a flush action
-				if (Client.messageNumber == 500){
+				if (Client.messageNumber == 499){
 					Client.messageNumber = 0;
 				}
 					
@@ -543,7 +549,7 @@ public class Client {
 
 				break;
 				
-			case 5:
+			case 4:
 				// do query for 200 times
 				Scanner test = new Scanner(System.in);
 				System.out
@@ -569,15 +575,17 @@ public class Client {
 					// a too long response time will not be record due to an EXCEPTION
 					Thread thread = Thread.currentThread();
 					thread.sleep(1000);
-					
-					if (Client.messageNumber == 500){
-						Client.messageNumber = 0;
 					}
 				}
-				}
-
+				
+			case 5:
+	    		System.out.print("Shared Files: ");
+	    		System.out.println(sharedFiles.keySet());
+	    		System.out.print("Downloaded Files: ");
+	    		System.out.println(downloadFiles.keySet());
+	    		
 			}
-		} while (commandIndex != 4);
+		} while (commandIndex != 6);
 		disconnect(socket);
 	}
 }

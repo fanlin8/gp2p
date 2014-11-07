@@ -19,16 +19,19 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 
+import com.google.gson.Gson;
+
 public class SendListener implements Runnable {
 	
 	private Socket socket;
+	public Gson gson;
 	public DataOutputStream dos;
 	public DataInputStream dis;
 
 	@Override
 	public synchronized void run() {
 		try {
-			System.out.println(Integer.parseInt(Client.self.peerPort) + 1);
+			//System.out.println(Integer.parseInt(Client.self.peerPort) + 1);
 			Client.downloadSSocket = new ServerSocket(Integer.parseInt(Client.self.peerPort) + 1);
 			while(true){
 				
@@ -36,18 +39,27 @@ public class SendListener implements Runnable {
 				dis = new DataInputStream(socket.getInputStream());
 				dos = new DataOutputStream(socket.getOutputStream());
 				String fPath = null;
+				gson = new Gson();
+				FileInfo finfo = new FileInfo();
 				
 				String downloadFileName = dis.readUTF();
 				System.out.println("Sending File: " + downloadFileName);
 				
-				for (int i = 0; i < Client.sharedFileList.length; i++) {
-					if (Client.sharedFileList[i].equals(downloadFileName))
-						fPath = "Shared";
-				}
-				for (int i = 0; i < Client.downloadFileList.length; i++) {
-					if (Client.downloadFileList[i].equals(downloadFileName))
-						fPath = "Downloads";
-				}
+				if (Client.sharedFiles.containsKey(downloadFileName)) {
+					finfo = Client.sharedFiles.get(downloadFileName);
+					fPath = "Shared";
+					String sendBuffer = gson.toJson(finfo);
+					dos.writeUTF(sendBuffer);
+					dos.flush();
+					}
+				
+				if (Client.downloadFiles.containsKey(downloadFileName)) {
+					finfo = Client.downloadFiles.get(downloadFileName);
+					fPath = "Downloads";
+					String sendBuffer = gson.toJson(finfo);
+					dos.writeUTF(sendBuffer);
+					dos.flush();
+					}		
 				
 				String filePath = Client.self.peerPath + "/" + fPath 
 						 + "/" + downloadFileName;
