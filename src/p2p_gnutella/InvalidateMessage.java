@@ -1,5 +1,14 @@
 package p2p_gnutella;
 
+/**
+ * This is the InvalidateMessage class.
+ * Store required information for a invalidate Message.
+ * 
+ * @author Fan Lin
+ * @version 1.0
+ * @since 2014-11-06
+ * */
+
 public class InvalidateMessage {
 	public MessageID messageID;
 	public FileInfo fileInfo;

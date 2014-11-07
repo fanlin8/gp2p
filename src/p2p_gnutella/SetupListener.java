@@ -1,12 +1,11 @@
 package p2p_gnutella;
 
 /**
- * This is a the Listener class.
- * Listening to any request from other peers.
- * Also handle the sending process.
+ * This is a the SetupListener class.
+ * Listening to network setup request from neighbors.
  * 
  * @author Fan Lin
- * @version 1.0
+ * @version 2.0
  * @since 2014-10-18
  * */
 

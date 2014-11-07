@@ -2,10 +2,10 @@ package p2p_gnutella;
 
 /**
  * This is a the IndexHandler class.
- * Mainly perform the Query request.
+ * Mainly perform the Query request and Push Invalidate Message request.
  * 
  * @author Fan Lin
- * @version 1.0
+ * @version 2.0
  * @since 2014-10-18
  * */
 
@@ -198,6 +198,7 @@ public class IndexHandler implements Runnable {
 					}					
 					break;
 					
+					/*--------- start change ----------*/
 				case 4:
 					InvalidateMessage tempInvM = gson.fromJson(dis.readUTF(), 
 							InvalidateMessage.class);
@@ -252,6 +253,7 @@ public class IndexHandler implements Runnable {
 						System.out.println("I don't Have this File!");
 						break;
 						}
+					// update corresponding conState for a specific file
 					if (Client.downloadFiles.containsKey(tempFile)
 							&& fInfo.versionNum != tempInvM.fileInfo.versionNum) {
 						Client.downloadFiles.get(tempFile).conState = "Invalid";
@@ -261,6 +263,7 @@ public class IndexHandler implements Runnable {
 						System.out.println("Consistency State for " + tempFile +
 								" is: " + Client.downloadFiles.get(tempFile).conState);
 					break;
+					/*--------- end change ----------*/
 				}}
 			} while (true);
 		} catch (IOException e) {

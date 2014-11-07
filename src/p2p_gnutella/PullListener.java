@@ -1,5 +1,15 @@
 package p2p_gnutella;
 
+/**
+ * This is a the PullListener class.
+ * Listening to any pull request from other peers.
+ * And will return the original file version number.
+ * 
+ * @author Fan Lin
+ * @version 1.0
+ * @since 2014-11-04
+ * */
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -30,6 +40,7 @@ public class PullListener implements Runnable {
 				
 				String pullFileName = dis.readUTF();
 				
+				// send back the pull result
 				if (Client.sharedFiles.containsKey(pullFileName)) {
 					version = Client.sharedFiles.get(pullFileName).versionNum;
 					dos.writeInt(version);

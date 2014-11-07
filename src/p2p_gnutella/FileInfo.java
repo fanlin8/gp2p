@@ -1,5 +1,14 @@
 package p2p_gnutella;
 
+/**
+ * This is the FileInfo class.
+ * Store required file information for specific file.
+ * 
+ * @author Fan Lin
+ * @version 1.0
+ * @since 2014-11-06
+ * */
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -43,6 +52,8 @@ public class FileInfo {
 				+ conState + " TTR: " + TTR);
 	}
 	
+	// method pull() for a specific file
+	// act same with the method pull() in class Client.java
 	@SuppressWarnings("resource")
 	public synchronized void pull() {
 		//System.out.println(peerName);

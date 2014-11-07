@@ -8,12 +8,16 @@ package p2p_gnutella;
  * The Peer could search a desired file by broadcasting the request to its neighbors.
  * All neighbors will forward the request.
  * If files is found, the destination information will be sent backward.
+ * The support of file consistency is added in this version.
+ * Two methods Pull and Push is added.
+ * Upon file changing, a peer will push an Invalidate message out.
+ * A peer will periodically pull the file owner to check if downlaoded file is out of date.
  * All functions could be done in Concurrency.
  * This System IS tested only on a local host.
  * 
  * @author Fan Lin
- * @version 1.0
- * @since 2014-10-18
+ * @version 2.0
+ * @since 2014-11-04
  * */
 
 import java.io.*;
@@ -50,6 +54,7 @@ public class Client {
 	private static Object lock1 = new Object();
 	private static Object lock2 = new Object();
 	
+	/*--------- start change ----------*/
 	public static ServerSocket pullSSocket;
 	public static int pushFlag;
 	public static int pushTTL;
@@ -61,6 +66,7 @@ public class Client {
 	public static PeerInfo[] invalidUpsArray;
 	public static int invalidMsgNumber;
 	public static Timer timer;
+	/*--------- end change ----------*/
 
 	public Client() {
 		initializeClient();
@@ -160,7 +166,10 @@ public class Client {
 		}
 	}
 	
+	/*--------- start change ----------*/
 	// get pull and push setting from the consistency configure file
+	// you could configure whether pull and push functions are used
+	// and set up the TTR value
 	public static void readConsistencyConfig(String inputPath) {
 		BufferedReader reader = null;
 		try {
@@ -199,6 +208,7 @@ public class Client {
 			}
 		}
 	}
+	/*--------- end change ----------*/
 	
 	// get each peer's sharing file list.
 	public void getSharedList(String inputPath) {
@@ -211,6 +221,7 @@ public class Client {
 		sharedFileList = new String[file.list().length];
 		sharedFileList = file.list();
 
+		// now all file lists are maintained by HashMap 
 		for (int i = 0; i < sharedFileList.length; i++){
 			sharedFiles.put(sharedFileList[i], new FileInfo(
 					sharedFileList[i], Client.self, Client.TTR));
@@ -230,7 +241,8 @@ public class Client {
 		gson = new Gson();
 		sharedFiles = new HashMap<String, FileInfo>();
 		downloadFiles = new HashMap<String, FileInfo>();
-				
+		
+		/*--------- start change ----------*/
 		File dir = new File("");
 		String currentPath = dir.getAbsolutePath();	
 		String configPath = currentPath + "/config.txt";
@@ -252,9 +264,11 @@ public class Client {
 				+ "/" + "Downloads";	
 		downloadFileListener(peerDownloadPath);
 		
+		// folk three different threads to handle different requests
 		new Thread(new SetupListener()).start();
 		new Thread(new SendListener()).start();
 		new Thread(new PullListener()).start();
+		/*--------- end change ----------*/
 		
 		Client.socket = new Socket[Client.neighborsCount];
 	}
@@ -296,8 +310,10 @@ public class Client {
 		}
 	}
 
+	/*--------- start change ----------*/
 	// this method uses org.apache.commons.io.monitor to monitor the change of a given directory.
 	// it is event-driven, file created, delete, change can trigger an event
+	// this will monitor a peer's owned file folder
 	public void shareFileListener(final String filePath) 
 	{
 		FileAlterationObserver observer = null;
@@ -311,7 +327,9 @@ public class Client {
 	        public void onFileChange(File file) {
 	            super.onFileChange(file);
 	            log.info("File Changed: " +file.getAbsolutePath());
+	            // update the version number
 	            sharedFiles.get(file.getName()).versionIncrease();
+	            // if push is enabled, invalidate message will be pushed out
 	            if (pushFlag == 1)
 	            	pushInvalidMsg(sharedFiles.get(file.getName()));
 	    		System.out.print("Shared Files: ");
@@ -322,6 +340,7 @@ public class Client {
 	        public void onFileCreate(File file) {
 	            super.onFileCreate(file);
 	            log.info("File Created: "+file.getAbsolutePath());
+	            // add new file to file HashMap
 	            sharedFiles.put(file.getName(), new FileInfo(
 	            		file.getName(), Client.self, Client.TTR));
 	    		System.out.print("Shared Files: ");
@@ -332,6 +351,7 @@ public class Client {
 	        public void onFileDelete(File file) {
 	            super.onFileDelete(file);
 	            log.info("File Deleted: " +file.getAbsolutePath());
+	         // remove the file from HashMap
 	            sharedFiles.remove(file.getName());
 	    		System.out.print("Shared Files: ");
 	    		System.out.println(sharedFiles.keySet());
@@ -375,6 +395,7 @@ public class Client {
 	        public void onFileDelete(File file) {
 	            super.onFileDelete(file);
 	            // log.info("File Deleted: " +file.getAbsolutePath());
+	            // update downloaded file HashMap
 	            downloadFiles.remove(file.getName());
 	    		System.out.print("Downloaded Files: ");
 	    		System.out.println(downloadFiles.keySet());
@@ -386,7 +407,8 @@ public class Client {
 	    } catch (Exception e) {
 	    	e.printStackTrace();
 	    }
-	}	
+	}
+	/*--------- end change ----------*/
 	
 	public void query(MessageID mID, int TTL, String searchFileName) {
 		synchronized (lock){
@@ -414,6 +436,8 @@ public class Client {
 		}
 	}}
 
+	/*--------- start change ----------*/
+	// same action manner with method query()
 	public static void pushInvalidMsg(FileInfo fInfo) {
 		synchronized (lock2){
 			InvalidateMessage invalidM = new InvalidateMessage(
@@ -427,6 +451,7 @@ public class Client {
 				dos.writeUTF("4");
 				dos.flush();
 				Gson gson = new Gson();
+				// send message
 				String sendBuffer = gson.toJson(invalidM);
 				dos.writeUTF(sendBuffer);
 				dos.flush();
@@ -442,6 +467,7 @@ public class Client {
 		}
 	}
 	}
+	/*--------- end change ----------*/
 	
 	public static void disconnect(Socket[] socket) {
 		for (int i = 0; i < neighborsCount; i++) {
@@ -464,6 +490,7 @@ public class Client {
 		return false;
 	}
 	
+	/*--------- start change ----------*/
 	// check if the client already has this invalid message
 	public static boolean checkInvalidMsgArray(InvalidateMessage m) {
 		for (int i = 0; i < Client.invalidMsgNumber; i++) {
@@ -474,6 +501,7 @@ public class Client {
 	}
 
 	@SuppressWarnings({ "rawtypes", "resource" })
+	// pull acts similarly as method obtain()
 	public synchronized static void pull() throws NumberFormatException, UnknownHostException, IOException {
 		for (Map.Entry me : downloadFiles.entrySet()) {
 			FileInfo fInfo = new FileInfo();
@@ -490,10 +518,13 @@ public class Client {
 					DataOutputStream p2pOut = new DataOutputStream(
 							p2pSocket.getOutputStream());
 					
+					// send out file name
 					p2pOut.writeUTF(fInfo.fileName);
 					p2pOut.flush();					
 					int originVersion = p2pIn.readInt();
 					
+					// check original version number
+					// update corresponding consistency state
 					if (originVersion != fInfo.versionNum) {
 						System.out.println(fInfo.fileName + 
 								" is out of date");
@@ -520,6 +551,7 @@ public class Client {
 			System.out.println("No Such File");
 		}		
 	}
+	/*--------- end change ----------*/
 	
 	@SuppressWarnings("resource")
 	public synchronized void obtain(String fn, String pn) throws IllegalArgumentException, IOException, Exception {
@@ -539,14 +571,20 @@ public class Client {
 				p2pOut.writeUTF(fn);
 				p2pOut.flush();
 				
+				/*--------- start change ----------*/
 				String infoBuffer = p2pIn.readUTF();
 				finfo = gson.fromJson(infoBuffer, finfo.getClass());
+				// if a file is downloaded, put it into HashMap
 				downloadFiles.put(fn, finfo);
+				// if pull function is enabled
+				// A timer will be started for each file which could pull periodically
+				// the pull interval is decided by the corresponding TTR
 				if (pullFlag == 1) {
 					timer = new Timer();
 					timer.schedule(new AutoPull(fn, timer), 5000, 
 							downloadFiles.get(fn).TTR*1000);
 				}
+				/*--------- end change ----------*/
 				
 				// the Download process may not work when file size is larger 
 				// than the buffersize
@@ -682,6 +720,8 @@ public class Client {
 				break;
 				
 			case 5:
+				// show two file lists
+				// and consistency states for downloaded files
 	    		System.out.print("Shared Files: ");
 	    		System.out.println(sharedFiles.keySet());
 	    		System.out.println("Downloaded Files: ");
@@ -693,6 +733,7 @@ public class Client {
 	    		break;
 	    		
 			case 6:
+				// push a specific Invalid Message
 				Scanner push = new Scanner(System.in);
 				System.out
 						.println("Please input the exact file "

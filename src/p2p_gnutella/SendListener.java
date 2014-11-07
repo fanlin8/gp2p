@@ -1,13 +1,13 @@
 package p2p_gnutella;
 
 /**
- * This is a the Listener class.
- * Listening to any request from other peers.
- * Also handle the sending process.
+ * This is a the SendListener class.
+ * Listening to any Download request from other peers.
+ * And will handle the sending process.
  * 
  * @author Fan Lin
  * @version 1.0
- * @since 2014-10-18
+ * @since 2014-11-04
  * */
 
 import java.io.BufferedInputStream;
