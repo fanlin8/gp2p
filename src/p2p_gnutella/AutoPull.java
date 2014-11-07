@@ -29,11 +29,11 @@ public class AutoPull extends TimerTask{
 			if (Client.downloadFiles.get(pullFile).conState.equals("Invalid"))
 				mytimer.cancel();
 			Thread.sleep(Client.downloadFiles.get(pullFile).TTR*1000);
-			System.out.println(pullFile + " Expiered!");
+			//System.out.println(pullFile + " Expiered!");
 			Client.downloadFiles.get(pullFile).conState = "TTR expeied";
 			// pull in a lazy manner, the interval is decided by TTR
 			Thread.sleep(Client.downloadFiles.get(pullFile).TTR*1000);
-			System.out.println("Now Pulling... " + pullFile);
+			//System.out.println("Now Pulling... " + pullFile);
 			Client.downloadFiles.get(pullFile).pull();
 		} catch (NumberFormatException e) {
 			e.printStackTrace();
