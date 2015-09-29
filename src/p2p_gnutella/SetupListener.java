@@ -22,7 +22,7 @@ public class SetupListener implements Runnable{
 	public DataInputStream dis;
 	
 	@Override
-	public void run() {
+	public synchronized void run() {
 		try {
 			String senderName;
 			//System.out.println(Integer.parseInt(Client.self.peerPort));
